@@ -1,10 +1,14 @@
 #include <esp32/ulp.h>
-#include <driver/rtc_io.h>
+#include <driver/gpio.h>
 #include <driver/dac.h>
 #include <soc/rtc.h>
 #include <math.h>
 
 #include "tetris.h"
+
+// Set the DAC to use
+#define DAC_CHANNEL DAC_CHANNEL_1
+#define DAC_REG RTC_IO_PAD_DAC1_REG
 
 unsigned long samplingRate = 44100;
 const int opcodeCount = 17;
@@ -22,10 +26,8 @@ void startULPSound()
   unsigned long rtc_fast_freq_hz = 1000000ULL * (1 << RTC_CLK_CAL_FRACT) * 256 / rtc_8md256_period;
 
   //initialize DACs
-  dac_output_enable(DAC_CHANNEL_1);
-  dac_output_enable(DAC_CHANNEL_2);
-  dac_output_voltage(DAC_CHANNEL_1, 128);
-  dac_output_voltage(DAC_CHANNEL_2, 128);
+  dac_output_enable(DAC_CHANNEL);
+  dac_output_voltage(DAC_CHANNEL, 128);
 
   int retAddress1 = 13;
 
@@ -83,10 +85,13 @@ const ulp_insn_t mono[] = {
 //    Serial.println(RTC_SLOW_MEM[i], HEX);
   
   //create DAC opcode tables
+  ulp_insn_t jump_ret = I_BXI(retAddress1);
   for(int i = 0; i < 256; i++)
   {
-    RTC_SLOW_MEM[dacTableStart1 + i * 2] = 0x1D4C0121 | (i << 10); //dac0
-    RTC_SLOW_MEM[dacTableStart1 + 1 + i * 2] = 0x80000000 + retAddress1 * 4;
+    ulp_insn_t dac_wr = I_WR_REG(DAC_REG, 19, 26, i);
+    // Convert ulp_insn_t to uint32_t using pointer casting
+    RTC_SLOW_MEM[dacTableStart1 + i * 2] = *(uint32_t*) &dac_wr;
+    RTC_SLOW_MEM[dacTableStart1 + 1 + i * 2] = *(uint32_t*) &jump_ret;
   }
 
   //set all samples to 128 (silence)
